@@ -1,4 +1,4 @@
-use crate::{GIT_DIR, HEAD, OBJ_DIR, REF_DIR};
+use crate::constants::{GIT_DIR, HEAD, OBJ_DIR, REF_DIR};
 use anyhow::Result;
 use std::fs::{create_dir_all, write};
 

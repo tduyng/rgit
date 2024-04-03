@@ -1,7 +1,10 @@
 use anyhow::Result;
 use clap::Parser;
-use git_starter_rust::cat_file;
-use git_starter_rust::{init, Args, Commands};
+use git_starter_rust::cli::{
+    args::{Args, Commands},
+    cat_file::cat_file,
+    init::init,
+};
 
 fn main() -> Result<()> {
     let args = Args::parse();
