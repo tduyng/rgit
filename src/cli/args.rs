@@ -16,4 +16,9 @@ pub enum Commands {
         pretty: bool,
         object_hash: String,
     },
+    HashObject {
+        #[arg(short, long)]
+        write: bool,
+        file: PathBuf,
+    },
 }

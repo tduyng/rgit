@@ -6,7 +6,7 @@ use std::{
     io::{BufReader, Read},
 };
 
-pub fn cat_file(pretty: bool, object_hash: String) -> Result<()> {
+pub fn exec(pretty: bool, object_hash: String) -> Result<()> {
     ensure!(pretty, "");
 
     let folder = &object_hash[..2];
