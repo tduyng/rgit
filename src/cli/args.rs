@@ -13,7 +13,6 @@ pub enum Commands {
     CatFile {
         #[arg(short, long)]
         pretty: bool,
-        #[arg(short, long)]
         object_hash: String,
     },
 }
