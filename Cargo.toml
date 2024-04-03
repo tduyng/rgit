@@ -20,3 +20,4 @@ sha1 = "0.10"                                                    # hashing
 hex = "0.4"                                                      # working with hash output
 anyhow = "1.0"                                                  # error handling
 thiserror = "1.0"                                               # error handling
+tempfile = "3.10"

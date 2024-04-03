@@ -1,8 +1,7 @@
 use crate::{
     blob::Blob,
     constants::{GIT_DIR, HEAD, OBJ_DIR, REF_DIR},
-    git_object::GitObject,
-    object_id::ObjectId,
+    object::{GitObject, ObjectId},
     tree::Tree,
 };
 use anyhow::{Ok, Result};
@@ -29,17 +28,18 @@ impl Commands {
     /// Read object from .git/objects.
     pub fn cat_file(oid: ObjectId, writer: &mut impl Write) -> Result<()> {
         let object = GitObject::from_oid(oid)?;
-        writer.write_all(object.to_string().as_bytes())?;
+        match object {
+            GitObject::Blob(blob) => blob.copy(writer)?,
+            _ => return Err(anyhow::anyhow!("Object is not a blob!")),
+        }
         Ok(())
     }
 
     /// Write object to .git/objects
     pub fn hash_object(file: PathBuf, write: bool, writer: &mut impl Write) -> Result<()> {
-        let blob = Blob::from_file(&file)?;
-        if write {
-            blob.write()?;
-        }
-        writer.write_all(blob.id.to_string().as_bytes())?;
+        let id = Blob::write(&file, write)?;
+        writer.write_all(id.to_string().as_bytes())?;
+
         Ok(())
     }
 
@@ -47,7 +47,7 @@ impl Commands {
     pub fn ls_tree(oid: ObjectId, name_only: bool, writer: &mut impl Write) -> Result<()> {
         let object = GitObject::from_oid(oid)?;
         match object {
-            GitObject::Tree(tree) => writer.write_all(tree.to_string(name_only).as_bytes())?,
+            GitObject::Tree(tree) => writer.write_all(tree.to_string(name_only)?.as_bytes())?,
             _ => return Err(anyhow::anyhow!("Object is not a tree")),
         }
         Ok(())
@@ -55,9 +55,8 @@ impl Commands {
 
     /// Write a tree object
     pub fn write_tree(writer: &mut impl Write) -> Result<()> {
-        let tree = Tree::from_directory(&PathBuf::from("."))?;
-        tree.write()?;
-        writer.write_all(tree.id.to_string().as_bytes())?;
+        let id = Tree::write(&PathBuf::from("."))?;
+        writer.write_all(id.to_string().as_bytes())?;
         Ok(())
     }
 }

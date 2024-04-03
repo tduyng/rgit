@@ -1,13 +1,11 @@
 use crate::blob::Blob;
-use crate::git_object::GitObject;
-use crate::object_id::ObjectId;
+use crate::object::{GitObject, ObjectId};
 use anyhow::{Context, Result};
-use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use sha1::{Digest, Sha1};
 use std::collections::BTreeSet;
-use std::fs::{create_dir_all, read_dir, write};
-use std::io::Write;
+use std::fs::{create_dir_all, read_dir, rename, File};
+use std::io::{Read, Write};
 use std::path::Path;
 
 #[derive(Debug)]
@@ -18,9 +16,9 @@ pub struct Tree {
 
 #[derive(Debug)]
 pub struct TreeEntry {
+    pub id: ObjectId,
     pub name: String,
     pub mode: String,
-    pub object: GitObject,
 }
 
 impl Ord for TreeEntry {
@@ -44,8 +42,12 @@ impl PartialEq for TreeEntry {
 }
 
 impl Tree {
-    pub fn from_object(id: ObjectId, obj: Vec<u8>) -> Result<Self> {
-        let mut object = &obj[..];
+    pub fn from_object(id: ObjectId, obj: impl Read) -> Result<Self> {
+        let obj = obj
+            .bytes()
+            .collect::<Result<Vec<u8>, _>>()
+            .context(format!("Reading tree object {id}"))?;
+        let mut object = obj.as_slice();
         let mut entries = BTreeSet::new();
 
         loop {
@@ -76,7 +78,7 @@ impl Tree {
             entries.insert(TreeEntry {
                 mode: String::from_utf8(mode.into())?,
                 name: String::from_utf8(name.into())?,
-                object: GitObject::from_oid(hex::encode(id).try_into()?)?,
+                id: hex::encode(id).try_into()?,
             });
             object = &rest[21..];
         }
@@ -84,7 +86,7 @@ impl Tree {
         Ok(Self { id, entries })
     }
 
-    pub fn from_directory(dir: &Path) -> Result<Self> {
+    pub fn write(dir: &Path) -> Result<ObjectId> {
         anyhow::ensure!(dir.is_dir(), "Not a directory: {:?}", dir);
         let mut entries = BTreeSet::new();
 
@@ -104,63 +106,56 @@ impl Tree {
             let metadata = entry.metadata()?;
             let is_dir = metadata.is_dir();
             let mode = if is_dir { "40000" } else { "100644" };
-            let object = if is_dir {
-                GitObject::Tree(Tree::from_directory(&path)?)
+            let id = if is_dir {
+                Tree::write(&path)?
             } else {
-                GitObject::Blob(Blob::from_file(&path)?)
+                Blob::write(&path, true)?
             };
 
             entries.insert(TreeEntry {
                 name: name.to_string(),
                 mode: mode.to_string(),
-                object,
+                id,
             });
         }
-        let content = Self::handle_entries(&entries, false);
-        let header = format!("tree {}\0", content.len());
-        let mut hasher = Sha1::new();
-        hasher.update(header.as_bytes());
-        hasher.update(&content);
-        let digest = hasher.finalize();
-        let oid = hex::encode(digest);
-        let id = oid.try_into()?;
+        let content = Self::handle_entries(&entries);
+        let tmp_dir = tempfile::tempdir()?;
+        let tmp_file = tmp_dir.path().join("tempfile");
+        let encoder =
+            flate2::write::ZlibEncoder::new(File::create(&tmp_file)?, Compression::default());
 
-        Ok(Self { id, entries })
+        let header = format!("tree {}\0", content.len());
+        let mut hasher = WriteHasher::new(encoder);
+        hasher.write_all(header.as_bytes())?;
+        hasher.write_all(&content)?;
+        let id = hasher.finalize();
+        create_dir_all(id.dir())?;
+        rename(tmp_file, id.path())?;
+
+        Ok(id)
     }
 
-    pub fn write(&self) -> Result<()> {
-        let content = Self::handle_entries(&self.entries, true);
-        let header = format!("tree {}\0", content.len());
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(header.as_bytes())?;
-        encoder.write_all(&content)?;
-
-        let blob = encoder.finish()?;
-        create_dir_all(self.id.dir())?;
-        write(self.id.path(), blob)?;
-
-        Ok(())
-    }
-
-    pub fn to_string(&self, name_only: bool) -> String {
+    pub fn to_string(&self, name_only: bool) -> Result<String> {
         let mut writer = Vec::new();
         if name_only {
             for entry in &self.entries {
-                writeln!(writer, "{}", entry.name).unwrap();
+                writeln!(writer, "{}", entry.name)?;
             }
         } else {
             for entry in &self.entries {
-                let (ty, id) = match &entry.object {
-                    GitObject::Blob(blob) => ("blob", &blob.id),
-                    GitObject::Tree(tree) => ("tree", &tree.id),
+                let object = GitObject::from_oid(entry.id.clone())?;
+                let ty = match object {
+                    GitObject::Blob(_) => "blob",
+                    GitObject::Tree(_) => "tree",
                 };
-                writeln!(writer, "{} {} {}\t{}", entry.mode, ty, id, entry.name).unwrap();
+                writeln!(writer, "{} {} {}\t{}", entry.mode, ty, entry.id, entry.name).unwrap();
             }
         }
-        String::from_utf8(writer).unwrap()
+
+        Ok(String::from_utf8(writer)?)
     }
 
-    fn handle_entries(entries: &BTreeSet<TreeEntry>, write: bool) -> Vec<u8> {
+    fn handle_entries(entries: &BTreeSet<TreeEntry>) -> Vec<u8> {
         let mut content = vec![];
         // <mode> <name>\0<20_byte_sha>
         for entry in entries {
@@ -168,11 +163,43 @@ impl Tree {
             content.extend([b' ']);
             content.extend(entry.name.as_bytes());
             content.extend([b'\0']);
-            content.extend(entry.object.id().as_bytes());
-            if write {
-                entry.object.write().unwrap();
-            }
+            content.extend(entry.id.as_bytes());
         }
         content
+    }
+}
+
+pub struct WriteHasher<W> {
+    writer: W,
+    hasher: Sha1,
+}
+
+impl<W> WriteHasher<W> {
+    pub fn new(writer: W) -> Self {
+        Self {
+            writer,
+            hasher: Sha1::new(),
+        }
+    }
+
+    pub fn finalize(self) -> ObjectId {
+        let digest = self.hasher.finalize();
+        let oid = hex::encode(digest);
+        oid.try_into().expect("Oid is not a hex string")
+    }
+}
+
+impl<W> Write for WriteHasher<W>
+where
+    W: Write,
+{
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let len = self.writer.write(buf)?;
+        self.hasher.update(&buf[..len]);
+        Ok(len)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.writer.flush()
     }
 }

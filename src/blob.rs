@@ -1,56 +1,107 @@
-use crate::object_id::ObjectId;
-use anyhow::{Ok, Result};
+use anyhow::{Context, Ok, Result};
 use flate2::{write::ZlibEncoder, Compression};
 use sha1::{Digest, Sha1};
-use std::{fmt::Display, fs, io::Write, path::Path};
+use std::{
+    fmt::Debug,
+    fs::{create_dir_all, rename, File},
+    io::{empty, BufReader, Read, Write},
+    path::Path,
+};
+use tempfile;
 
-#[derive(Debug)]
-pub struct Blob {
+use crate::object::ObjectId;
+
+pub struct Blob<R> {
     pub id: ObjectId,
-    pub blob: Vec<u8>,
+    pub blob: R,
 }
 
-impl Blob {
-    pub fn from_object(oid: ObjectId, object: Vec<u8>) -> Self {
-        Self {
-            id: oid,
-            blob: object,
-        }
+impl<R> Blob<R>
+where
+    R: Read,
+{
+    pub fn from_object(oid: ObjectId, blob: R) -> Self {
+        Self { id: oid, blob }
     }
 
-    pub fn from_file(path: &Path) -> Result<Self> {
-        let mut hasher = Sha1::new();
-        let content = fs::read(path)?;
-        let header = format!("blob {}\0", content.len());
-        hasher.update(&header);
-        hasher.update(&content);
-
-        let digest: &[u8] = &hasher.finalize()[..];
-        let oid = hex::encode(digest);
-
-        Ok(Self {
-            id: oid.try_into()?,
-            blob: content,
-        })
-    }
-
-    pub fn write(&self) -> Result<()> {
-        let header = format!("blob {}\0", self.blob.len());
-
-        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(header.as_bytes())?;
-        encoder.write_all(&self.blob)?;
-        let blob = encoder.finish()?;
-
-        fs::create_dir_all(self.id.dir())?;
-        fs::write(self.id.path(), blob)?;
-
+    pub fn copy(mut self, writer: &mut impl Write) -> Result<()> {
+        std::io::copy(&mut self.blob, writer)?;
         Ok(())
     }
 }
 
-impl Display for Blob {
+impl Blob<()> {
+    pub fn write(path: &Path, write: bool) -> Result<ObjectId> {
+        let file = File::open(path).context(format!("Opening file {path:?}"))?;
+        let len = file.metadata()?.len();
+        let header = format!("blob {}\0", len);
+        let body = BufReader::new(file);
+        let mut reader = ReadHasher::new(header.as_bytes().chain(body));
+
+        if write {
+            let tmp_dir = tempfile::tempdir()?;
+            let tmp_path = tmp_dir.path().join("tempfile");
+            let file = File::create(&tmp_path)
+                .context(format!("Creating temporary file {:?}", tmp_path))?;
+            let mut encoder = ZlibEncoder::new(file, Compression::default());
+            std::io::copy(&mut reader, &mut encoder)?;
+            encoder.finish().context(format!("Encoding {path:?}"))?;
+            let id = reader.finalize();
+            create_dir_all(id.dir()).context(format!("Creating directory {:?}", id.dir()))?;
+            rename(&tmp_path, id.path()).context(format!(
+                "Renaming temporary file from {:?} to {:?}",
+                tmp_path,
+                id.path()
+            ))?;
+
+            Ok(id)
+        } else {
+            std::io::copy(&mut reader, &mut empty())?;
+            Ok(reader.finalize())
+        }
+    }
+}
+
+impl<R> Debug for Blob<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", String::from_utf8_lossy(&self.blob))
+        f.debug_struct("Blob")
+            .field("id", &self.id)
+            .field("blob", &"...")
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+struct ReadHasher<R> {
+    reader: R,
+    hasher: Sha1,
+}
+
+impl<R> Read for ReadHasher<R>
+where
+    R: Read,
+{
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize, std::io::Error> {
+        let len = self.reader.read(buf)?;
+        self.hasher.update(&buf[..len]);
+        Result::Ok(len)
+    }
+}
+
+impl<R> ReadHasher<R>
+where
+    R: Read,
+{
+    fn new(reader: R) -> Self {
+        Self {
+            reader,
+            hasher: Sha1::new(),
+        }
+    }
+
+    fn finalize(self) -> ObjectId {
+        let digest = self.hasher.finalize();
+        let oid = hex::encode(digest);
+        oid.try_into().unwrap()
     }
 }
