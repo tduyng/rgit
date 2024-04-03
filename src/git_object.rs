@@ -15,10 +15,17 @@ pub enum GitObject {
 
 impl GitObject {
     #[allow(dead_code)]
-    fn id(&self) -> &ObjectId {
+    pub fn id(&self) -> &ObjectId {
         match self {
             GitObject::Blob(blob) => &blob.id,
             GitObject::Tree(tree) => &tree.id,
+        }
+    }
+
+    pub fn write(&self) -> Result<()> {
+        match self {
+            GitObject::Blob(blob) => blob.write(),
+            GitObject::Tree(tree) => tree.write(),
         }
     }
 

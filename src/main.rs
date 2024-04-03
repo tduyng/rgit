@@ -33,6 +33,7 @@ pub enum Command {
         name_only: bool,
         oid: String,
     },
+    WriteTree,
 }
 
 fn main() -> Result<()> {
@@ -49,5 +50,6 @@ fn main() -> Result<()> {
         Command::LsTree { name_only, oid } => {
             Commands::ls_tree(oid.try_into()?, name_only, &mut io::stdout())
         }
+        Command::WriteTree => Commands::write_tree(&mut io::stdout()),
     }
 }

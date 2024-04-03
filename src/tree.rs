@@ -1,8 +1,14 @@
+use crate::blob::Blob;
 use crate::git_object::GitObject;
 use crate::object_id::ObjectId;
-use anyhow::Result;
+use anyhow::{Context, Result};
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
+use sha1::{Digest, Sha1};
 use std::collections::BTreeSet;
+use std::fs::{create_dir_all, read_dir, write};
 use std::io::Write;
+use std::path::Path;
 
 #[derive(Debug)]
 pub struct Tree {
@@ -78,6 +84,64 @@ impl Tree {
         Ok(Self { id, entries })
     }
 
+    pub fn from_directory(dir: &Path) -> Result<Self> {
+        anyhow::ensure!(dir.is_dir(), "Not a directory: {:?}", dir);
+        let mut entries = BTreeSet::new();
+
+        for entry in read_dir(dir).context(format!("Failed to list {dir:?}"))? {
+            let entry = entry?;
+            let path = entry.path();
+            let name = path
+                .file_name()
+                .unwrap_or_else(|| panic!("Failed to parse {path:?}"))
+                .to_str()
+                .expect("Filename is not valid UTF-8");
+
+            if name == ".git" {
+                continue; // Ingore .git directory
+            }
+
+            let metadata = entry.metadata()?;
+            let is_dir = metadata.is_dir();
+            let mode = if is_dir { "40000" } else { "100644" };
+            let object = if is_dir {
+                GitObject::Tree(Tree::from_directory(&path)?)
+            } else {
+                GitObject::Blob(Blob::from_file(&path)?)
+            };
+
+            entries.insert(TreeEntry {
+                name: name.to_string(),
+                mode: mode.to_string(),
+                object,
+            });
+        }
+        let content = Self::handle_entries(&entries, false);
+        let header = format!("tree {}\0", content.len());
+        let mut hasher = Sha1::new();
+        hasher.update(header.as_bytes());
+        hasher.update(&content);
+        let digest = hasher.finalize();
+        let oid = hex::encode(digest);
+        let id = oid.try_into()?;
+
+        Ok(Self { id, entries })
+    }
+
+    pub fn write(&self) -> Result<()> {
+        let content = Self::handle_entries(&self.entries, true);
+        let header = format!("tree {}\0", content.len());
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(header.as_bytes())?;
+        encoder.write_all(&content)?;
+
+        let blob = encoder.finish()?;
+        create_dir_all(self.id.dir())?;
+        write(self.id.path(), blob)?;
+
+        Ok(())
+    }
+
     pub fn to_string(&self, name_only: bool) -> String {
         let mut writer = Vec::new();
         if name_only {
@@ -94,5 +158,21 @@ impl Tree {
             }
         }
         String::from_utf8(writer).unwrap()
+    }
+
+    fn handle_entries(entries: &BTreeSet<TreeEntry>, write: bool) -> Vec<u8> {
+        let mut content = vec![];
+        // <mode> <name>\0<20_byte_sha>
+        for entry in entries {
+            content.extend(entry.mode.as_bytes());
+            content.extend([b' ']);
+            content.extend(entry.name.as_bytes());
+            content.extend([b'\0']);
+            content.extend(entry.object.id().as_bytes());
+            if write {
+                entry.object.write().unwrap();
+            }
+        }
+        content
     }
 }

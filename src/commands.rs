@@ -3,6 +3,7 @@ use crate::{
     constants::{GIT_DIR, HEAD, OBJ_DIR, REF_DIR},
     git_object::GitObject,
     object_id::ObjectId,
+    tree::Tree,
 };
 use anyhow::{Ok, Result};
 use std::{
@@ -49,6 +50,14 @@ impl Commands {
             GitObject::Tree(tree) => writer.write_all(tree.to_string(name_only).as_bytes())?,
             _ => return Err(anyhow::anyhow!("Object is not a tree")),
         }
+        Ok(())
+    }
+
+    /// Write a tree object
+    pub fn write_tree(writer: &mut impl Write) -> Result<()> {
+        let tree = Tree::from_directory(&PathBuf::from("."))?;
+        tree.write()?;
+        writer.write_all(tree.id.to_string().as_bytes())?;
         Ok(())
     }
 }
