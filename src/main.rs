@@ -33,7 +33,16 @@ pub enum Command {
         name_only: bool,
         oid: String,
     },
+    #[command(about = "Write a tree object")]
     WriteTree,
+    #[command(about = "Write a commit")]
+    CommitTree {
+        #[arg(short, long)]
+        message: String,
+        #[arg(short, long)]
+        parent: String,
+        tree: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -51,5 +60,10 @@ fn main() -> Result<()> {
             Commands::ls_tree(oid.try_into()?, name_only, &mut io::stdout())
         }
         Command::WriteTree => Commands::write_tree(&mut io::stdout()),
+        Command::CommitTree {
+            message,
+            parent,
+            tree,
+        } => Commands::write_commit(message, Some(parent), tree, &mut io::stdout()),
     }
 }

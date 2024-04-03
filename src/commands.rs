@@ -1,5 +1,6 @@
 use crate::{
     blob::Blob,
+    commit::Commit,
     constants::{GIT_DIR, HEAD, OBJ_DIR, REF_DIR},
     object::{GitObject, ObjectId},
     tree::Tree,
@@ -57,6 +58,20 @@ impl Commands {
     pub fn write_tree(writer: &mut impl Write) -> Result<()> {
         let id = Tree::write(&PathBuf::from("."))?;
         writer.write_all(id.to_string().as_bytes())?;
+        Ok(())
+    }
+
+    /// Write a commit
+    pub fn write_commit(
+        message: String,
+        parent: Option<String>,
+        tree: String,
+        writer: &mut impl Write,
+    ) -> Result<()> {
+        let parent = parent.map(|p| ObjectId::new(&p));
+        let id = Commit::write(message, parent, tree.try_into()?)?;
+        writer.write_all(id.to_string().as_bytes())?;
+
         Ok(())
     }
 }
