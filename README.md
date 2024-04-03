@@ -1,9 +1,13 @@
+# Build your own Git
+
 [![progress-banner](https://backend.codecrafters.io/progress/git/410c1755-1cfe-48a9-bbdf-2463f8721df8)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
 
-This is a starting point for Rust solutions to the
+Welcome to the "Build Your Own HTTP Server" for Rust solutions!
+
+This repository serves as a my Rust solutions to the
 ["Build Your Own Git" Challenge](https://codecrafters.io/challenges/git).
 
-In this challenge, you'll build a small Git implementation that's capable of
+You'll build a small Git implementation that's capable of
 initializing a repository, creating commits and cloning a public repository.
 Along the way we'll learn about the `.git` directory, Git objects (blobs,
 commits, trees etc.), Git's transfer protocols and more.
@@ -11,22 +15,7 @@ commits, trees etc.), Git's transfer protocols and more.
 **Note**: If you're viewing this repo on GitHub, head over to
 [codecrafters.io](https://codecrafters.io) to try the challenge.
 
-# Passing the first stage
-
-The entry point for your Git implementation is in `src/main.rs`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
-
-```sh
-git add .
-git commit -m "pass 1st stage" # any msg
-git push origin master
-```
-
-That's all!
-
-# Stage 2 & beyond
-
-Note: This section is for stages 2 and beyond.
+## Getting started
 
 1. Ensure you have `cargo (1.54)` installed locally
 1. Run `./your_git.sh` to run your Git implementation, which is implemented in
