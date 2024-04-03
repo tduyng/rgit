@@ -2,6 +2,7 @@ use crate::{
     blob::Blob,
     constants::{GIT_DIR, HEAD, OBJ_DIR, REF_DIR},
     git_object::GitObject,
+    object_id::ObjectId,
 };
 use anyhow::{Ok, Result};
 use std::{
@@ -25,7 +26,7 @@ impl Commands {
     }
 
     /// Read object from .git/objects.
-    pub fn cat_file(oid: String, writer: &mut impl Write) -> Result<()> {
+    pub fn cat_file(oid: ObjectId, writer: &mut impl Write) -> Result<()> {
         let object = GitObject::from_oid(oid)?;
         writer.write_all(object.to_string().as_bytes())?;
         Ok(())
@@ -42,7 +43,7 @@ impl Commands {
     }
 
     /// Read a tree object
-    pub fn ls_tree(oid: String, name_only: bool, writer: &mut impl Write) -> Result<()> {
+    pub fn ls_tree(oid: ObjectId, name_only: bool, writer: &mut impl Write) -> Result<()> {
         let object = GitObject::from_oid(oid)?;
         match object {
             GitObject::Tree(tree) => writer.write_all(tree.to_string(name_only).as_bytes())?,

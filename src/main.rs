@@ -40,10 +40,14 @@ fn main() -> Result<()> {
 
     match args.action {
         Command::Init => Commands::init(),
-        Command::CatFile { pretty: _, oid } => Commands::cat_file(oid, &mut io::stdout()),
+        Command::CatFile { pretty: _, oid } => {
+            Commands::cat_file(oid.try_into()?, &mut io::stdout())
+        }
         Command::HashObject { write, file } => {
             Commands::hash_object(file, write, &mut io::stdout())
         }
-        Command::LsTree { name_only, oid } => Commands::ls_tree(oid, name_only, &mut io::stdout()),
+        Command::LsTree { name_only, oid } => {
+            Commands::ls_tree(oid.try_into()?, name_only, &mut io::stdout())
+        }
     }
 }

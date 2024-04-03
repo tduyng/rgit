@@ -1,12 +1,11 @@
+use crate::{blob::Blob, object_id::ObjectId, tree::Tree};
+use anyhow::Result;
+use flate2::read::ZlibDecoder;
 use std::{
     fmt::Display,
     fs::File,
     io::{BufReader, Read},
 };
-
-use crate::{blob::Blob, constants::OBJ_DIR, tree::Tree};
-use anyhow::Result;
-use flate2::read::ZlibDecoder;
 
 #[derive(Debug)]
 pub enum GitObject {
@@ -15,8 +14,16 @@ pub enum GitObject {
 }
 
 impl GitObject {
-    pub fn from_oid(oid: String) -> Result<Self> {
-        let path = format!("{}/{}/{}", OBJ_DIR, &oid[..2], &oid[2..]);
+    #[allow(dead_code)]
+    fn id(&self) -> &ObjectId {
+        match self {
+            GitObject::Blob(blob) => &blob.id,
+            GitObject::Tree(tree) => &tree.id,
+        }
+    }
+
+    pub fn from_oid(oid: ObjectId) -> Result<Self> {
+        let path = oid.path();
         let file = BufReader::new(File::open(path)?);
         let mut decoder = ZlibDecoder::new(file);
         let mut content = Vec::new();

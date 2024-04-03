@@ -1,18 +1,17 @@
+use crate::object_id::ObjectId;
 use anyhow::{Ok, Result};
 use flate2::{write::ZlibEncoder, Compression};
 use sha1::{Digest, Sha1};
 use std::{fmt::Display, fs, io::Write, path::Path};
 
-use crate::constants::OBJ_DIR;
-
 #[derive(Debug)]
 pub struct Blob {
-    pub id: String,
+    pub id: ObjectId,
     pub blob: Vec<u8>,
 }
 
 impl Blob {
-    pub fn from_object(oid: String, object: Vec<u8>) -> Self {
+    pub fn from_object(oid: ObjectId, object: Vec<u8>) -> Self {
         Self {
             id: oid,
             blob: object,
@@ -30,7 +29,7 @@ impl Blob {
         let oid = hex::encode(digest);
 
         Ok(Self {
-            id: oid,
+            id: oid.try_into()?,
             blob: content,
         })
     }
@@ -43,11 +42,8 @@ impl Blob {
         encoder.write_all(&self.blob)?;
         let blob = encoder.finish()?;
 
-        let folder = &self.id[..2];
-        let file = &self.id[2..];
-        let path = format!("{}/{}/{}", OBJ_DIR, folder, file);
-        fs::create_dir_all(format!("{}/{}", OBJ_DIR, folder))?;
-        fs::write(path, blob)?;
+        fs::create_dir_all(self.id.dir())?;
+        fs::write(self.id.path(), blob)?;
 
         Ok(())
     }

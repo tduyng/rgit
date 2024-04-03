@@ -1,19 +1,20 @@
 use crate::git_object::GitObject;
+use crate::object_id::ObjectId;
 use anyhow::Result;
 use std::collections::BTreeSet;
 use std::io::Write;
 
 #[derive(Debug)]
 pub struct Tree {
-    id: String,
-    entries: BTreeSet<TreeEntry>,
+    pub id: ObjectId,
+    pub entries: BTreeSet<TreeEntry>,
 }
 
 #[derive(Debug)]
 pub struct TreeEntry {
-    name: String,
-    mode: String,
-    object: GitObject,
+    pub name: String,
+    pub mode: String,
+    pub object: GitObject,
 }
 
 impl Ord for TreeEntry {
@@ -37,7 +38,7 @@ impl PartialEq for TreeEntry {
 }
 
 impl Tree {
-    pub fn from_object(id: String, obj: Vec<u8>) -> Result<Self> {
+    pub fn from_object(id: ObjectId, obj: Vec<u8>) -> Result<Self> {
         let mut object = &obj[..];
         let mut entries = BTreeSet::new();
 
@@ -69,7 +70,7 @@ impl Tree {
             entries.insert(TreeEntry {
                 mode: String::from_utf8(mode.into())?,
                 name: String::from_utf8(name.into())?,
-                object: GitObject::from_oid(hex::encode(id))?,
+                object: GitObject::from_oid(hex::encode(id).try_into()?)?,
             });
             object = &rest[21..];
         }
