@@ -27,6 +27,12 @@ pub enum Command {
         write: bool,
         file: PathBuf,
     },
+    #[command(about = "Read a tree object")]
+    LsTree {
+        #[arg(short, long, help = "Display name only?")]
+        name_only: bool,
+        oid: String,
+    },
 }
 
 fn main() -> Result<()> {
@@ -38,5 +44,6 @@ fn main() -> Result<()> {
         Command::HashObject { write, file } => {
             Commands::hash_object(file, write, &mut io::stdout())
         }
+        Command::LsTree { name_only, oid } => Commands::ls_tree(oid, name_only, &mut io::stdout()),
     }
 }

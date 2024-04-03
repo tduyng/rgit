@@ -40,4 +40,14 @@ impl Commands {
         writer.write_all(blob.id.to_string().as_bytes())?;
         Ok(())
     }
+
+    /// Read a tree object
+    pub fn ls_tree(oid: String, name_only: bool, writer: &mut impl Write) -> Result<()> {
+        let object = GitObject::from_oid(oid)?;
+        match object {
+            GitObject::Tree(tree) => writer.write_all(tree.to_string(name_only).as_bytes())?,
+            _ => return Err(anyhow::anyhow!("Object is not a tree")),
+        }
+        Ok(())
+    }
 }
